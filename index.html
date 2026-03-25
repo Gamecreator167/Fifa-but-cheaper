@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Mini FIFA Ultimate</title>
+<style>
+body { margin:0; overflow:hidden; background:#0b6623; touch-action:none; }
+canvas { display:block; }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// Spieler
+let player = {x:150,y:300,r:20};
+let enemy = {x:canvas.width-150,y:300,r:20};
+
+// Keeper
+let keeper1 = {x:40,y:canvas.height/2,r:18};
+let keeper2 = {x:canvas.width-40,y:canvas.height/2,r:18};
+
+// Ball
+let ball = {x:canvas.width/2,y:canvas.height/2,r:12,dx:0,dy:0,spin:0};
+
+let playerHasBall=false;
+let enemyHasBall=false;
+
+// Score
+let scoreP=0, scoreE=0;
+
+// Controls
+let runTouch=null, shootTouch=null, stealTouch=null;
+let runStart=null, shootStart=null, stealStart=null;
+
+let runVec={x:0,y:0};
+let shootVec={x:0,y:0};
+let stealVec={x:0,y:0};
+
+let power=0;
+
+// RESET
+function reset(){
+  ball.x=canvas.width/2;
+  ball.y=canvas.height/2;
+  ball.dx=0;
+  ball.dy=0;
+  ball.spin=0;
+
+  player.x=150;
+  enemy.x=canvas.width-150;
+
+  playerHasBall=false;
+  enemyHasBall=false;
+}
+
+// TOUCH START
+canvas.addEventListener("touchstart", e=>{
+  for(let t of e.touches){
+
+    // RUN (unten links)
+    if(t.clientX < 150 && t.clientY > canvas.height-150){
+      runTouch=t;
+      runStart={x:t.clientX,y:t.clientY};
+    }
+
+    // SHOOT (unten rechts)
+    else if(t.clientX > canvas.width-150 && t.clientY > canvas.height-150){
+      shootTouch=t;
+      shootStart={x:t.clientX,y:t.clientY};
+      power=0;
+    }
+
+    // STEAL (über Shoot)
+    else if(t.clientX > canvas.width-150 && t.clientY > canvas.height-300){
+      stealTouch=t;
+      stealStart={x:t.clientX,y:t.clientY};
+    }
+  }
+});
+
+// TOUCH MOVE
+canvas.addEventListener("touchmove", e=>{
+  for(let t of e.touches){
+
+    // RUN
+    if(runTouch && t.identifier===runTouch.identifier){
+      let dx=t.clientX-runStart.x;
+      let dy=t.clientY-runStart.y;
+
+      runVec.x=dx;
+      runVec.y=dy;
+
+      player.x+=dx*0.05;
+      player.y+=dy*0.05;
+    }
+
+    // SHOOT
+    if(shootTouch && t.identifier===shootTouch.identifier){
+      let dx=t.clientX-shootStart.x;
+      let dy=t.clientY-shootStart.y;
+
+      shootVec.x=dx;
+      shootVec.y=dy;
+
+      power+=0.3;
+      if(power>15) power=15;
+
+      ball.spin = dx*0.01;
+    }
+
+    // STEAL
+    if(stealTouch && t.identifier===stealTouch.identifier){
+      let dx=t.clientX-stealStart.x;
+      let dy=t.clientY-stealStart.y;
+
+      stealVec.x=dx;
+      stealVec.y=dy;
+
+      let dist=Math.hypot(enemy.x-player.x, enemy.y-player.y);
+      if(dist<60){
+        playerHasBall=true;
+        enemyHasBall=false;
+      }
+    }
+  }
+});
+
+// TOUCH END
+canvas.addEventListener("touchend", ()=>{
+
+  if(shootTouch && playerHasBall){
+    let len=Math.hypot(shootVec.x,shootVec.y);
+
+    if(len>0){
+      ball.dx=(shootVec.x/len)*power;
+      ball.dy=(shootVec.y/len)*power;
+    }
+
+    playerHasBall=false;
+    power=0;
+  }
+
+  runTouch=null;
+  shootTouch=null;
+  stealTouch=null;
+
+  runVec={x:0,y:0};
+  shootVec={x:0,y:0};
+  stealVec={x:0,y:0};
+});
+
+// UPDATE
+function update(){
+
+  // Gegner KI
+  let dx=ball.x-enemy.x;
+  let dy=ball.y-enemy.y;
+
+  enemy.x+=dx*0.02;
+  enemy.y+=dy*0.02;
+
+  let distE=Math.hypot(ball.x-enemy.x, ball.y-enemy.y);
+  if(distE<30){
+    enemyHasBall=true;
+    playerHasBall=false;
+  }
+
+  if(enemyHasBall && Math.random()<0.02){
+    ball.dx=-8;
+    ball.dy=(Math.random()-0.5)*6;
+    enemyHasBall=false;
+  }
+
+  // Keeper Bewegung
+  keeper1.y+=(ball.y-keeper1.y)*0.1;
+  keeper2.y+=(ball.y-keeper2.y)*0.08;
+
+  // Keeper Block
+  [keeper1,keeper2].forEach(k=>{
+    let d=Math.hypot(ball.x-k.x, ball.y-k.y);
+    if(d<25){
+      ball.dx*=-1;
+      ball.dy*=-1;
+    }
+  });
+
+  // Ball Bewegung
+  if(playerHasBall){
+    ball.x=player.x+25;
+    ball.y=player.y;
+  }
+  else if(enemyHasBall){
+    ball.x=enemy.x-25;
+    ball.y=enemy.y;
+  }
+  else{
+    ball.x+=ball.dx;
+    ball.y+=ball.dy;
+
+    ball.dx+=ball.spin;
+    ball.spin*=0.98;
+
+    ball.dx*=0.99;
+    ball.dy*=0.99;
+  }
+
+  let goalTop=canvas.height/2-80;
+  let goalBottom=canvas.height/2+80;
+
+  // oben/unten
+  if(ball.y<0){ ball.y=0; ball.dy*=-1; }
+  if(ball.y>canvas.height){ ball.y=canvas.height; ball.dy*=-1; }
+
+  // links
+  if(ball.x<0){
+    if(ball.y>goalTop && ball.y<goalBottom){
+      scoreE++;
+      reset();
+    } else {
+      ball.x=0;
+      ball.dx*=-1;
+    }
+  }
+
+  // rechts
+  if(ball.x>canvas.width){
+    if(ball.y>goalTop && ball.y<goalBottom){
+      scoreP++;
+      reset();
+    } else {
+      ball.x=canvas.width;
+      ball.dx*=-1;
+    }
+  }
+
+  // Spieler nimmt Ball
+  let dist=Math.hypot(ball.x-player.x, ball.y-player.y);
+  if(dist<30){
+    playerHasBall=true;
+    enemyHasBall=false;
+  }
+}
+
+// DRAW
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // Feld
+  ctx.strokeStyle="white";
+  ctx.beginPath();
+  ctx.moveTo(canvas.width/2,0);
+  ctx.lineTo(canvas.width/2,canvas.height);
+  ctx.stroke();
+
+  ctx.fillRect(0, canvas.height/2-80, 10,160);
+  ctx.fillRect(canvas.width-10, canvas.height/2-80, 10,160);
+
+  // Spieler
+  ctx.fillStyle="blue";
+  ctx.beginPath();
+  ctx.arc(player.x,player.y,20,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.fillStyle="red";
+  ctx.beginPath();
+  ctx.arc(enemy.x,enemy.y,20,0,Math.PI*2);
+  ctx.fill();
+
+  // Keeper
+  ctx.fillStyle="yellow";
+  ctx.beginPath();
+  ctx.arc(keeper1.x,keeper1.y,18,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(keeper2.x,keeper2.y,18,0,Math.PI*2);
+  ctx.fill();
+
+  // Ball
+  ctx.fillStyle="white";
+  ctx.beginPath();
+  ctx.arc(ball.x,ball.y,12,0,Math.PI*2);
+  ctx.fill();
+
+  // Score
+  ctx.fillStyle="white";
+  ctx.font="30px Arial";
+  ctx.fillText(scoreP+" : "+scoreE, canvas.width/2-30,40);
+
+  // RUN
+  ctx.fillStyle = runTouch ? "rgba(0,255,0,0.6)" : "rgba(255,255,255,0.3)";
+  ctx.beginPath();
+  ctx.arc(80, canvas.height-80, 60, 0, Math.PI*2);
+  ctx.fill();
+
+  if(runTouch){
+    ctx.fillStyle="white";
+    ctx.beginPath();
+    ctx.arc(runStart.x+runVec.x, runStart.y+runVec.y, 20, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // SHOOT
+  ctx.fillStyle = shootTouch ? "rgba(255,0,0,0.6)" : "rgba(255,255,255,0.3)";
+  ctx.beginPath();
+  ctx.arc(canvas.width-80, canvas.height-80, 60, 0, Math.PI*2);
+  ctx.fill();
+
+  if(shootTouch){
+    ctx.fillStyle="white";
+    ctx.beginPath();
+    ctx.arc(shootStart.x+shootVec.x, shootStart.y+shootVec.y, 20, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // STEAL
+  ctx.fillStyle = stealTouch ? "rgba(255,255,0,0.6)" : "rgba(255,255,255,0.3)";
+  ctx.beginPath();
+  ctx.arc(canvas.width-80, canvas.height-180, 50, 0, Math.PI*2);
+  ctx.fill();
+
+  if(stealTouch){
+    ctx.fillStyle="white";
+    ctx.beginPath();
+    ctx.arc(stealStart.x+stealVec.x, stealStart.y+stealVec.y, 20, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+function loop(){
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+
+</body>
+</html>
